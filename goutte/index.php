@@ -6,6 +6,8 @@ error_reporting(5);
 
 require_once('vendor/autoload.php');
 
+$count = 3450;
+
 $time_begin = time();
 $client = new Client();
 $category = [];
@@ -20,11 +22,13 @@ $crawler->filter('#ASCategoryNav > ul > li')->each(function($node) use (&$catego
 
 		// category item
 		$node->filter('li > ul > li > a')->each(function($node) use (&$category, $category_title, $basePath) {
-			$category[] = [
-				'category' => $category_title,
-				'item_title' => trim($node->text()),
-				'url' => $basePath . $node->attr('href')
-			];
+			if (strpos($node->text(), 'See all') === false) {
+				$category[] = [
+					'category' => $category_title,
+					'item_title' => trim($node->text()),
+					'url' => $basePath . $node->attr('href')
+				];
+			}
 		});
 	} else {
 		$children = $node->children();
@@ -43,16 +47,22 @@ foreach ($category as &$row) {
 	$crawler = $client->request('GET', $row['url']);
 	$row['pagenation'] = $crawler->filter('div.search-pagination > a.search-pagination__link')->count() ? $crawler->filter('div.search-pagination > a.search-pagination__link')->last()->text() : 1;
 }
-
-var_dump($category);
+unset($row);
 
 // every tool information
 $client = new Client();
+$tool = [];
+$fp = fopen('data.csv', 'w');
+fputcsv($fp, array('名称', '五星率', 'review人数', '详情链接', '免费信息', '工具简介', '工具图标链接', '所属分类', '分类父类'));
 foreach ($category as $row) {
 	var_dump('正在跑：' . $row['item_title']);
+
 	for ($i=1; $i <= $row['pagenation']; $i++) { 
 		$crawler = $client->request('GET', $row['url'] . '?page=' . $i);
-		$crawler->filter('#SearchResultsListings > div.grid-item--app-card-listing')->each(function($node){
+
+		var_dump('当前第' . $i . '页，共有' . $crawler->filter('#SearchResultsListings > div.grid-item--app-card-listing')->count() . '条数据');
+
+		$crawler->filter('#SearchResultsListings > div.grid-item--app-card-listing')->each(function($node) use (&$tool, $row){
 			$star = $node->filter('span.ui-star-rating__rating')->count() ? $node->filter('span.ui-star-rating__rating')->text() : '';
 			$star_rating = substr($star, 0, strpos($star, 'of') - 1);
 
@@ -61,17 +71,25 @@ foreach ($category as $row) {
 
 			$info = [
 				'title' => $node->filter('h4')->text(),
-				'icon' => $node->filter('img')->attr('src'),
 				'star-rating' => $star_rating,
 				'review' => $review,
+				'url' => $node->filter('a')->attr('href'),
 				'free_info' => $node->filter('div.ui-app-pricing--format-short')->text(),
 				'desc' => $node->filter('p')->text(),
-				'url' => $node->filter('a')->attr('href')
+				'icon' => $node->filter('img')->attr('src'),
+				'category_item' => $row['item_title'],
+				'category' => $row['category']
 			];
-			file_put_contents('data.json', json_encode($info) . "\r\n", FILE_APPEND);
+			var_dump($info);exit;
+			fputcsv($fp, $info);
+			// array_unique($tool);
+			// file_put_contents('data.json', json_encode($info) . "\r\n", FILE_APPEND);
 		});
 	}
 }
 
-var_dump('共耗时：' . (time() - $time_begin) . 's');exit;
+fclose($fp);
+// file_put_contents('data.json', json_encode($tool));
+
+var_dump('数据量：' . count($tool) . ', 共耗时：' . (time() - $time_begin) . 's');
 
